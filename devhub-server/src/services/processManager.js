@@ -6,7 +6,7 @@
 
 "use strict";
 
-const { spawn } = require("child_process");
+const { spawn, execSync } = require("child_process");
 const net = require("net");
 const path = require("path");
 const setupManager = require("./setupManager");
@@ -110,11 +110,19 @@ function buildEnv(project, serviceType) {
   return env;
 }
 
+
+function freePort(port) {
+  try {
+    execSync(`lsof -ti:${port} | xargs kill -9`, { stdio: "ignore" });
+  } catch { /* nothing on that port */ }
+}
+
 function spawnServiceProcess(project, serviceType) {
   const bag = getProcessBag(project.id);
   const svcConfig = project[serviceType];
   const cwd = path.join(project.path, svcConfig.cwd || ".");
 
+  if (svcConfig.port) freePort(svcConfig.port);
   pushLog(project.id, serviceType, "info", `▶ Starting: ${svcConfig.cmd} (cwd: ${cwd})`);
 
   const child = spawn(svcConfig.cmd, {

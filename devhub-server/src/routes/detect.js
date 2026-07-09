@@ -272,6 +272,19 @@ function detectProject(rootDir) {
 
   const rootPkg = readJson(path.join(rootDir, "package.json"));
 
+  // ── 1b. No package.json at root but exactly one subdir has one — treat that
+  //        subdir as the effective root to avoid doubled cwd paths.
+  if (!rootPkg) {
+    try {
+      const subdirs = fs.readdirSync(rootDir, { withFileTypes: true })
+        .filter(e => e.isDirectory() && !e.name.startsWith(".") && e.name !== "node_modules")
+        .filter(e => exists(path.join(rootDir, e.name, "package.json")));
+      if (subdirs.length === 1) {
+        return detectProject(path.join(rootDir, subdirs[0].name));
+      }
+    } catch { /* ignore */ }
+  }
+
   // ── 2. Monorepo / MERN — scan sub-directories ─────────────────────────────
   const FRONTEND_NAMES = ["client", "frontend", "web", "app", "ui"];
   const BACKEND_NAMES  = ["server", "backend", "api", "service", "services"];
@@ -312,37 +325,55 @@ function detectProject(rootDir) {
   }
 
   // ── 3. Also scan ALL sub-dirs for backend-like dirs (e.g. script-to-video-backend)
+  // Only scan direct children of rootDir — never recurse into subdirs of subdirs,
+  // which would produce doubled cwd paths like "subdir/subdir-backend".
   if (!result.backend) {
-    try {
-      const entries = fs.readdirSync(rootDir, { withFileTypes: true });
-      for (const e of entries) {
-        if (!e.isDirectory()) continue;
-        if (e.name.startsWith(".") || e.name === "node_modules" || e.name === "venv") continue;
-        const sub = path.join(rootDir, e.name);
+    // Build the set of dirs to scan: direct children of rootDir.
+    // If a frontend subdir was detected, also scan inside that subdir for a co-located backend.
+    const scanRoots = [{ base: rootDir, prefix: "" }];
+    if (result.frontend && result.frontend.cwd && result.frontend.cwd !== ".") {
+      scanRoots.push({
+        base: path.join(rootDir, result.frontend.cwd),
+        prefix: result.frontend.cwd + "/",
+      });
+    }
 
-        // JS backend
-        if (isBackendDir(sub)) {
-          const pkg = readJson(path.join(sub, "package.json"));
-          const cmd = pickCmd(pkg?.scripts);
-          const port = detectBackendPort(sub);
-          result.backend = { cwd: e.name, cmd, port };
-          for (const ef of [".env", ".env.local"]) {
-            if (exists(path.join(sub, ef))) { result.envFilePath = path.join(e.name, ef); break; }
-          }
-          break;
-        }
+    outer:
+    for (const { base, prefix } of scanRoots) {
+      try {
+        const entries = fs.readdirSync(base, { withFileTypes: true });
+        for (const e of entries) {
+          if (!e.isDirectory()) continue;
+          if (e.name.startsWith(".") || e.name === "node_modules" || e.name === "venv") continue;
+          // Skip the dir that is already the frontend cwd to avoid treating it as a backend
+          if (!prefix && result.frontend?.cwd === e.name) continue;
+          const sub = path.join(base, e.name);
+          const cwd = prefix + e.name;
 
-        // Python backend
-        const pyConfig = detectPythonBackend(sub);
-        if (pyConfig) {
-          result.backend = { cwd: e.name, cmd: pyConfig.cmd, port: pyConfig.port };
-          for (const ef of [".env", ".env.local"]) {
-            if (exists(path.join(sub, ef))) { result.envFilePath = path.join(e.name, ef); break; }
+          // JS backend
+          if (isBackendDir(sub)) {
+            const pkg = readJson(path.join(sub, "package.json"));
+            const cmd = pickCmd(pkg?.scripts);
+            const port = detectBackendPort(sub);
+            result.backend = { cwd, cmd, port };
+            for (const ef of [".env", ".env.local"]) {
+              if (exists(path.join(sub, ef))) { result.envFilePath = path.join(cwd, ef); break; }
+            }
+            break outer;
           }
-          break;
+
+          // Python backend
+          const pyConfig = detectPythonBackend(sub);
+          if (pyConfig) {
+            result.backend = { cwd, cmd: pyConfig.cmd, port: pyConfig.port };
+            for (const ef of [".env", ".env.local"]) {
+              if (exists(path.join(sub, ef))) { result.envFilePath = path.join(cwd, ef); break; }
+            }
+            break outer;
+          }
         }
-      }
-    } catch { /* ignore readdir errors */ }
+      } catch { /* ignore readdir errors */ }
+    }
   }
 
   // ── 4. Root-level single-app (no sub-dirs detected) ───────────────────────

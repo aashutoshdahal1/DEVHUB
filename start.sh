@@ -1,52 +1,49 @@
-d#!/bin/bash
+#!/bin/bash
+DIR="$(cd "$(dirname "$0")" && pwd)"
 
-echo "🚀 Starting DevHub..."
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
+export PATH="/usr/local/bin:/opt/homebrew/bin:$PATH"
 
-# Setup & Start Backend
-echo "📦 Checking backend dependencies..."
-cd devhub-server || exit
+# Kill any stale processes
+lsof -ti:3001 | xargs kill -9 2>/dev/null
+lsof -ti:8080 | xargs kill -9 2>/dev/null
+
+echo "Starting DevHub..."
+
+# Start Backend
+cd "$DIR/devhub-server" || exit
 if [ ! -d "node_modules" ]; then
     echo "Installing backend dependencies..."
     npm install
 fi
-echo "🟢 Starting Backend..."
+echo "Starting Backend..."
 npm run dev &
 BACKEND_PID=$!
-cd ..
 
-# Setup & Start Frontend
-echo "📦 Checking frontend dependencies..."
-cd code-haven-ui || exit
+# Start Frontend
+cd "$DIR/code-haven-ui" || exit
 if [ ! -d "node_modules" ]; then
     echo "Installing frontend dependencies..."
     npm install
 fi
-echo "🟢 Starting Frontend..."
+echo "Starting Frontend..."
 npm run dev &
 FRONTEND_PID=$!
-cd ..
 
-# Wait for servers to spin up
-echo "⏳ Waiting for servers to start..."
-sleep 3
+echo "Waiting for servers to start..."
+sleep 5
 
-# Open browser
-echo "🌐 Opening browser..."
-if command -v open &> /dev/null; then
-    open http://localhost:5173
-elif command -v xdg-open &> /dev/null; then
-    xdg-open http://localhost:5173
-fi
+echo "Opening browser..."
+open http://localhost:8080
 
-echo "✅ Everything is running! Press Ctrl+C in this terminal to stop the servers."
+echo "DevHub is running! Press Ctrl+C to stop."
 
-# Trap Ctrl+C to cleanly kill the background processes
 cleanup() {
     echo "Stopping servers..."
     kill $BACKEND_PID $FRONTEND_PID 2>/dev/null
-    # Fallback: force kill any processes still listening on the frontend and backend ports
     lsof -ti:3001 | xargs kill -9 2>/dev/null
-    lsof -ti:5173 | xargs kill -9 2>/dev/null
+    lsof -ti:8080 | xargs kill -9 2>/dev/null
     exit 0
 }
 

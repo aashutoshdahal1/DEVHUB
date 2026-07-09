@@ -882,6 +882,7 @@ function AddProjectDialog({
   const [step, setStep] = useState<"path" | "review">("path");
   const [pathInput, setPathInput] = useState("");
   const [detecting, setDetecting] = useState(false);
+  const [browsing, setBrowsing] = useState(false);
   const [detectError, setDetectError] = useState("");
   const [portConflict, setPortConflict] = useState<Record<string, unknown> | null>(null);
   const [type, setType] = useState<NewProjectPayload["type"]>("mern");
@@ -931,6 +932,17 @@ function AddProjectDialog({
       setDetectError(err instanceof Error ? err.message : String(err));
     } finally {
       setDetecting(false);
+    }
+  };
+
+  const handleBrowse = async () => {
+    setBrowsing(true);
+    try {
+      const { pickFolder } = await import("@/lib/api");
+      const picked = await pickFolder();
+      if (picked) { setPathInput(picked); setDetectError(""); }
+    } finally {
+      setBrowsing(false);
     }
   };
 
@@ -987,8 +999,19 @@ function AddProjectDialog({
                   autoFocus
                 />
                 <Button
+                  variant="outline"
+                  onClick={handleBrowse}
+                  disabled={browsing || detecting}
+                  className="shrink-0 gap-1.5"
+                  title="Browse with Finder"
+                >
+                  {browsing
+                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    : <FolderOpen className="h-3.5 w-3.5" />}
+                </Button>
+                <Button
                   onClick={handleDetect}
-                  disabled={detecting || !pathInput.trim()}
+                  disabled={detecting || browsing || !pathInput.trim()}
                   className="shrink-0 gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90"
                 >
                   {detecting

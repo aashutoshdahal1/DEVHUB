@@ -17,6 +17,7 @@ const cors = require("cors");
 const projectsRouter = require("./routes/projects");
 const envRouter = require("./routes/env");
 const detectRouter = require("./routes/detect");
+const { execFile } = require("child_process");
 const logStream = require("./ws/logStream");
 const pm = require("./services/processManager");
 
@@ -58,6 +59,23 @@ app.use("/api/projects/:id/env", (req, res, next) => {
   req.params.id = req.params.id; // ensure id propagates
   next();
 }, envRouter);
+
+// ── Folder picker (macOS only) ────────────────────────────────────────────────
+app.get("/api/pick-folder", (req, res) => {
+  const script = `
+    tell application "Finder"
+      activate
+    end tell
+    POSIX path of (choose folder with prompt "Select your project folder")
+  `;
+  execFile("osascript", ["-e", script], { timeout: 60000 }, (err, stdout) => {
+    if (err) {
+      // User cancelled (exit 1) — not a server error
+      return res.json({ path: null });
+    }
+    res.json({ path: stdout.trim().replace(/\/$/, "") });
+  });
+});
 
 // 404 catch-all for API
 app.use("/api", (req, res) => {

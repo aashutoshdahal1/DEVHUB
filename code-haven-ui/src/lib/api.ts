@@ -127,6 +127,13 @@ export async function detectProject(
   return res.json();
 }
 
+// ── Folder picker ─────────────────────────────────────────────────────────────
+export const pickFolder = (): Promise<string | null> =>
+  fetch(`${BACKEND_URL}/api/pick-folder`)
+    .then((r) => r.json())
+    .then((d) => d.path ?? null)
+    .catch(() => null);
+
 // ── Health ────────────────────────────────────────────────────────────────────
 export const checkHealth = () =>
   fetch(`${BACKEND_URL}/health`)
