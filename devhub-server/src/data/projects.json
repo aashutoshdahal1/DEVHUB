@@ -1,70 +1,32 @@
 [
   {
-    "id": "script-to-video",
+    "id": "eacd0198-13f8-48bb-b87d-e939d16a87df",
     "name": "script-to-video",
     "type": "mern",
-    "path": "/Users/aashutoshdahal/Desktop/personal-sites/script-to-video/script-to-video",
+    "path": "/Users/aashutoshdahal/Desktop/personal-sites/script-to-video",
     "frontend": {
       "cwd": ".",
       "cmd": "npm run dev -- --port 8081",
       "port": 8081
     },
     "backend": {
-      "cwd": "script-to-video-backend",
-      "cmd": "node server.js",
+      "cwd": "server",
+      "cmd": "npm run dev",
+      "port": 5005
+    },
+    "envFilePath": "server/.env"
+  },
+  {
+    "id": "e4cae32b-e394-488c-9ea8-87c3c6791b8a",
+    "name": "doodlegen-full",
+    "type": "html",
+    "path": "/Users/aashutoshdahal/Desktop/personal-sites/doodlegen-full",
+    "frontend": {
+      "cwd": ".",
+      "cmd": "npm run start",
       "port": 3000
     },
-    "envFilePath": "script-to-video-backend/.env"
-  },
-  {
-    "id": "13c36e6d-5f55-4303-b54f-061bc41e631e",
-    "name": "whisper-main",
-    "type": "mern",
-    "path": "/Users/aashutoshdahal/Desktop/youtube/whisper-main",
-    "frontend": {
-      "cwd": "frontend",
-      "cmd": "npm run dev -- --port 3002",
-      "port": 3002
-    },
-    "backend": {
-      "cwd": "backend",
-      "cmd": "bash -c \"source venv/bin/activate && uvicorn main:app --host 0.0.0.0 --port 8000 --reload\"",
-      "port": 8000
-    },
-    "envFilePath": null
-  },
-  {
-    "id": "7a6eedf6-c1e0-4b6e-ac42-01bb9ab96ac7",
-    "name": "study-companion",
-    "type": "mern",
-    "path": "/Users/aashutoshdahal/Desktop/personal-sites/Study-Campanion/study-companion",
-    "frontend": {
-      "cwd": ".",
-      "cmd": "npm run dev -- --port 8082",
-      "port": 8082
-    },
-    "backend": {
-      "cwd": ".",
-      "cmd": "node server.js",
-      "port": 3001
-    },
-    "envFilePath": ".env"
-  },
-  {
-    "id": "f003dcb2-b48f-4453-89a3-ba7e4d0fe08a",
-    "name": "chatterbox",
-    "type": "mern",
-    "path": "/Users/aashutoshdahal/Desktop/personal-sites/Voice-Cloner-Generator/chatterbox",
-    "frontend": {
-      "cwd": "web",
-      "cmd": "npm run dev -- --port 3003",
-      "port": 3003
-    },
-    "backend": {
-      "cwd": ".",
-      "cmd": "bash -c \"source venv/bin/activate && PYTHONPATH=src uvicorn api_server:app --host 0.0.0.0 --port 8001 --reload\"",
-      "port": 8001
-    },
+    "backend": null,
     "envFilePath": null
   }
 ]
