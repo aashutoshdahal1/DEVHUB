@@ -3,7 +3,7 @@ import { useMemo, useRef, useState, useEffect } from "react";
 import {
   Plus, Settings, Play, Square, RotateCw, ExternalLink, Trash2,
   Eye, EyeOff, Search, X, FolderOpen, Terminal, AlertCircle,
-  Wifi, WifiOff, Loader2,
+  Wifi, WifiOff, Loader2, Sun, Moon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,6 +31,26 @@ import {
 } from "@/hooks/useProjects";
 import type { NewProjectPayload } from "@/lib/api";
 import { useLogStream } from "@/hooks/useLogStream";
+
+function useTheme() {
+  const [theme, setTheme] = useState<"dark" | "light">(() => {
+    const stored = typeof localStorage !== "undefined" ? localStorage.getItem("devhub-theme") : null;
+    return (stored === "light" ? "light" : "dark") as "dark" | "light";
+  });
+
+  useEffect(() => {
+    const html = document.documentElement;
+    if (theme === "light") {
+      html.classList.add("light");
+    } else {
+      html.classList.remove("light");
+    }
+    localStorage.setItem("devhub-theme", theme);
+  }, [theme]);
+
+  const toggle = () => setTheme((t) => (t === "dark" ? "light" : "dark"));
+  return { theme, toggle };
+}
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -93,6 +113,7 @@ function DevHubPage() {
   const { data: rawProjects = [], isLoading, isError } = useProjects();
   const { data: backendOnline = false } = useBackendHealth();
   const mutations = useProjectMutations();
+  const { theme, toggle: toggleTheme } = useTheme();
 
   const projects = useMemo(() => rawProjects.map(toUIProject), [rawProjects]);
   const [selectedId, setSelectedId] = useState<string>("");
@@ -198,7 +219,7 @@ function DevHubPage() {
 
   return (
     <div className="flex h-screen w-full bg-background text-foreground overflow-hidden">
-      <Toaster theme="dark" position="bottom-right" />
+      <Toaster theme={theme} position="bottom-right" />
 
       {/* Offline banner */}
       {!backendOnline && (
@@ -334,6 +355,15 @@ function DevHubPage() {
             )}
           </div>
           <div className="ml-auto flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={toggleTheme}
+              title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            >
+              {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </Button>
             <Button variant="ghost" size="icon" className="h-8 w-8">
               <Settings className="h-4 w-4" />
             </Button>
@@ -658,7 +688,7 @@ function LogsTab({ project }: { project: ReturnType<typeof toUIProject> }) {
 
       <div
         ref={scrollRef}
-        className="h-[480px] overflow-y-auto rounded-lg border border-border bg-[oklch(0.12_0_0)] p-3 font-mono text-xs leading-relaxed"
+        className="h-[480px] overflow-y-auto rounded-lg border border-border bg-surface p-3 font-mono text-xs leading-relaxed"
       >
         {filtered.length === 0 ? (
           <div className="flex h-full items-center justify-center text-muted-foreground">
