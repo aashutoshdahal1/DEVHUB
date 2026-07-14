@@ -18,7 +18,7 @@
   },
   {
     "id": "e4cae32b-e394-488c-9ea8-87c3c6791b8a",
-    "name": "doodlegen-full",
+    "name": "Image-Generator",
     "type": "html",
     "path": "/Users/aashutoshdahal/Desktop/personal-sites/doodlegen-full",
     "frontend": {
@@ -27,6 +27,23 @@
       "port": 3000
     },
     "backend": null,
+    "envFilePath": null
+  },
+  {
+    "id": "61a5f3a0-edd3-4e19-8230-b12b40459996",
+    "name": "Whisper UI",
+    "type": "mern",
+    "path": "/Users/aashutoshdahal/Desktop/personal-sites/transcript-video-openai-whisper",
+    "frontend": {
+      "cwd": "frontend",
+      "cmd": "npm run dev -- --port 3002",
+      "port": 3002
+    },
+    "backend": {
+      "cwd": "backend",
+      "cmd": "uvicorn main:app --port 8001",
+      "port": 8001
+    },
     "envFilePath": null
   }
 ]
