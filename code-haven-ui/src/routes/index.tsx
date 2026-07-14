@@ -82,6 +82,13 @@ function aggregateStatus(services: Service[]): ServiceStatus {
 }
 
 // ── Page ───────────────────────────────────────────────────────────────────────
+type PortConflictState = {
+  port: number;
+  projectId: string;
+  serviceType: "frontend" | "backend" | null;
+  action: "start" | "start-all";
+};
+
 function DevHubPage() {
   const { data: rawProjects = [], isLoading, isError } = useProjects();
   const { data: backendOnline = false } = useBackendHealth();
@@ -91,6 +98,7 @@ function DevHubPage() {
   const [selectedId, setSelectedId] = useState<string>("");
   const [addOpen, setAddOpen] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [portConflict, setPortConflict] = useState<PortConflictState | null>(null);
 
   // Auto-select first project
   useEffect(() => {
@@ -113,11 +121,12 @@ function DevHubPage() {
   const handleServiceAction = async (
     projectId: string,
     serviceType: "frontend" | "backend",
-    action: "start" | "stop" | "restart"
+    action: "start" | "stop" | "restart",
+    force = false,
   ) => {
     try {
       if (action === "start") {
-        await mutations.startService.mutateAsync({ id: projectId, type: serviceType });
+        await mutations.startService.mutateAsync({ id: projectId, type: serviceType, force });
         toast.success(`${serviceType} starting — installing dependencies if needed`);
       } else if (action === "stop") {
         await mutations.stopService.mutateAsync({ id: projectId, type: serviceType });
@@ -127,20 +136,43 @@ function DevHubPage() {
         toast.success(`${serviceType} restarted`);
       }
     } catch (err) {
-      // 409 "not running" / "already running" — stale UI state, not a real error
       const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('"PORT_IN_USE"') || msg.includes("PORT_IN_USE")) {
+        const portMatch = msg.match(/"port"\s*:\s*(\d+)/);
+        const port = portMatch ? parseInt(portMatch[1], 10) : 0;
+        setPortConflict({ port, projectId, serviceType, action: "start" });
+        return;
+      }
       if (!msg.includes("not running") && !msg.includes("already running")) {
         toast.error(`Failed: ${action} → ${msg}`);
       }
     }
   };
 
-  const handleStartAll = async (projectId: string) => {
+  const handleStartAll = async (projectId: string, force = false) => {
     try {
-      await mutations.startAllServices.mutateAsync(projectId);
+      await mutations.startAllServices.mutateAsync({ id: projectId, force });
       toast.success("Installing dependencies and starting all services…");
     } catch (err) {
-      toast.error(`Start all failed: ${err instanceof Error ? err.message : String(err)}`);
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('"PORT_IN_USE"') || msg.includes("PORT_IN_USE")) {
+        const portMatch = msg.match(/"port"\s*:\s*(\d+)/);
+        const port = portMatch ? parseInt(portMatch[1], 10) : 0;
+        setPortConflict({ port, projectId, serviceType: null, action: "start-all" });
+        return;
+      }
+      toast.error(`Start all failed: ${msg}`);
+    }
+  };
+
+  const handleForceStart = async () => {
+    if (!portConflict) return;
+    const { projectId, serviceType, action } = portConflict;
+    setPortConflict(null);
+    if (action === "start-all") {
+      await handleStartAll(projectId, true);
+    } else if (serviceType) {
+      await handleServiceAction(projectId, serviceType, "start", true);
     }
   };
 
@@ -317,7 +349,7 @@ function DevHubPage() {
             onServiceAction={(svcType, action) =>
               handleServiceAction(selected.id, svcType, action)
             }
-            onStartAll={() => handleStartAll(selected.id)}
+            onStartAll={() => handleStartAll(selected.id, false)}
             onSetup={() => handleSetup(selected.id)}
             onDeleteProject={() => handleDeleteProject(selected.id)}
           />
@@ -344,6 +376,28 @@ function DevHubPage() {
           }
         }}
       />
+
+      {/* Port conflict dialog */}
+      <AlertDialog open={!!portConflict} onOpenChange={(o) => { if (!o) setPortConflict(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Port {portConflict?.port} is already in use</AlertDialogTitle>
+            <AlertDialogDescription>
+              Something else is listening on port <strong>{portConflict?.port}</strong>.
+              You can force-start and kill that process, or go to Settings to change the port.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleForceStart}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Kill &amp; Start Anyway
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -759,11 +813,21 @@ function SettingsTab({
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [name, setName] = useState(project.name);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [portValues, setPortValues] = useState<Record<string, string>>({});
+  const [savingPort, setSavingPort] = useState<string | null>(null);
   const mutations = useProjectMutations();
 
   useEffect(() => {
     setName(project.name);
   }, [project.name]);
+
+  useEffect(() => {
+    const initial: Record<string, string> = {};
+    for (const svc of project.services) {
+      initial[svc.name] = String(svc.port);
+    }
+    setPortValues(initial);
+  }, [project.id]);
 
   const handleRename = async () => {
     if (name.trim() === project.name || !name.trim()) return;
@@ -773,9 +837,29 @@ function SettingsTab({
       toast.success("Project renamed successfully");
     } catch (err) {
       toast.error(`Failed to rename: ${err instanceof Error ? err.message : String(err)}`);
-      setName(project.name); // Revert on failure
+      setName(project.name);
     } finally {
       setIsUpdating(false);
+    }
+  };
+
+  const handleSavePort = async (svc: ReturnType<typeof toUIProject>["services"][number]) => {
+    const newPort = parseInt(portValues[svc.name] ?? "", 10);
+    if (!newPort || newPort === svc.port) return;
+    if (newPort < 1 || newPort > 65535) { toast.error("Port must be between 1 and 65535"); return; }
+    setSavingPort(svc.name);
+    try {
+      await mutations.updateServicePort.mutateAsync({
+        id: project.id,
+        type: svc.serviceType as "frontend" | "backend",
+        port: newPort,
+      });
+      toast.success(`${svc.name} port updated to ${newPort}`);
+    } catch (err) {
+      toast.error(`Failed to update port: ${err instanceof Error ? err.message : String(err)}`);
+      setPortValues((prev) => ({ ...prev, [svc.name]: String(svc.port) }));
+    } finally {
+      setSavingPort(null);
     }
   };
 
@@ -785,14 +869,14 @@ function SettingsTab({
         <h3 className="text-sm font-semibold">General</h3>
         <Field label="Project Name">
           <div className="flex gap-2">
-            <Input 
-              value={name} 
-              onChange={(e) => setName(e.target.value)} 
-              className="bg-surface" 
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="bg-surface"
               onKeyDown={(e) => e.key === "Enter" && handleRename()}
             />
-            <Button 
-              onClick={handleRename} 
+            <Button
+              onClick={handleRename}
               disabled={isUpdating || name.trim() === project.name || !name.trim()}
               className="shrink-0"
             >
@@ -803,24 +887,43 @@ function SettingsTab({
         <Field label="Folder Path">
           <Input value={project.path} readOnly className="bg-surface font-mono text-xs" />
         </Field>
-        <p className="text-xs text-muted-foreground">
-          To edit project metadata, update <code className="rounded bg-surface px-1">projects.json</code> in the devhub-server directory and restart the server.
-        </p>
       </div>
 
-      {project.services.map((svc) => (
-        <div key={svc.name} className="space-y-4 rounded-lg border border-border bg-card p-5">
-          <h3 className="text-sm font-semibold">{svc.name}</h3>
-          <div className="grid grid-cols-[1fr_140px] gap-3">
-            <Field label="Start Command">
-              <Input value={svc.startCommand} readOnly className="bg-surface font-mono text-xs" />
-            </Field>
-            <Field label="Port">
-              <Input value={String(svc.port)} readOnly className="bg-surface font-mono text-xs" />
-            </Field>
+      {project.services.map((svc) => {
+        const portChanged = parseInt(portValues[svc.name] ?? "", 10) !== svc.port;
+        return (
+          <div key={svc.name} className="space-y-4 rounded-lg border border-border bg-card p-5">
+            <h3 className="text-sm font-semibold">{svc.name}</h3>
+            <div className="grid grid-cols-[1fr_160px] gap-3">
+              <Field label="Start Command">
+                <Input value={svc.startCommand} readOnly className="bg-surface font-mono text-xs" />
+              </Field>
+              <Field label="Port">
+                <div className="flex gap-1.5">
+                  <Input
+                    value={portValues[svc.name] ?? String(svc.port)}
+                    onChange={(e) => setPortValues((prev) => ({ ...prev, [svc.name]: e.target.value }))}
+                    onKeyDown={(e) => e.key === "Enter" && portChanged && handleSavePort(svc)}
+                    className="bg-surface font-mono text-xs"
+                    type="number"
+                    min={1}
+                    max={65535}
+                  />
+                  <Button
+                    size="sm"
+                    onClick={() => handleSavePort(svc)}
+                    disabled={!portChanged || savingPort === svc.name}
+                    className="shrink-0 px-2"
+                    title="Save port"
+                  >
+                    {savingPort === svc.name ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Save"}
+                  </Button>
+                </div>
+              </Field>
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
 
       <div className="space-y-3 rounded-lg border border-destructive/30 bg-destructive/5 p-5">
         <h3 className="text-sm font-semibold text-destructive">Danger Zone</h3>

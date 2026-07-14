@@ -100,9 +100,12 @@ async function waitForPort(port, timeoutMs = 180_000) {
 
 function buildEnv(project, serviceType) {
   const env = { ...process.env };
-  if (serviceType === "frontend" && project.backend?.port) {
-    env.DEVHUB_BACKEND_PORT = String(project.backend.port);
-    env.CHATTERBOX_API_PORT = String(project.backend.port);
+  if (serviceType === "frontend") {
+    if (project.frontend?.port) env.PORT = String(project.frontend.port);
+    if (project.backend?.port) {
+      env.DEVHUB_BACKEND_PORT = String(project.backend.port);
+      env.CHATTERBOX_API_PORT = String(project.backend.port);
+    }
   }
   if (serviceType === "backend" && project.backend?.port) {
     env.PORT = String(project.backend.port);
@@ -121,6 +124,12 @@ function spawnServiceProcess(project, serviceType) {
   const bag = getProcessBag(project.id);
   const svcConfig = project[serviceType];
   const cwd = path.join(project.path, svcConfig.cwd || ".");
+
+  if (!require("fs").existsSync(cwd)) {
+    setPhase(bag, serviceType, "error");
+    pushLog(project.id, serviceType, "error", `Directory not found: ${cwd}`);
+    return null;
+  }
 
   if (svcConfig.port) freePort(svcConfig.port);
   pushLog(project.id, serviceType, "info", `▶ Starting: ${svcConfig.cmd} (cwd: ${cwd})`);
@@ -216,7 +225,8 @@ function getLogBuffer(projectId, serviceType) {
   return logBuffers.get(getKey(projectId, serviceType)) || [];
 }
 
-function startService(project, serviceType) {
+async function startService(project, serviceType, options = {}) {
+  const { force = false } = options;
   const bag = getProcessBag(project.id);
 
   if (bag[serviceType]) {
@@ -229,15 +239,23 @@ function startService(project, serviceType) {
     return { ok: false, reason: `No ${serviceType} config for this project` };
   }
 
+  const port = project[serviceType]?.port;
+  if (port && !force) {
+    const inUse = await isPortListening(port);
+    if (inUse) {
+      return { ok: false, reason: `PORT_IN_USE:${port}` };
+    }
+  }
+
   const task = runStartPipeline(project, serviceType);
   bag[`${serviceType}Task`] = task;
 
   return { ok: true };
 }
 
-async function startAllServices(project) {
+async function startAllServices(project, options = {}) {
   if (project.backend) {
-    const backendResult = startService(project, "backend");
+    const backendResult = await startService(project, "backend", options);
     if (!backendResult.ok) return backendResult;
 
     const bag = getProcessBag(project.id);
@@ -250,7 +268,7 @@ async function startAllServices(project) {
   }
 
   if (project.frontend) {
-    return startService(project, "frontend");
+    return startService(project, "frontend", options);
   }
 
   return { ok: true };
@@ -303,10 +321,10 @@ function stopService(projectId, serviceType) {
   return { ok: true };
 }
 
-async function restartService(project, serviceType) {
+async function restartService(project, serviceType, options = {}) {
   stopService(project.id, serviceType);
   await sleep(800);
-  return startService(project, serviceType);
+  return startService(project, serviceType, options);
 }
 
 function getStatus(projectId) {
@@ -337,4 +355,5 @@ module.exports = {
   restartService,
   getStatus,
   stopAll,
+  isPortListening,
 };

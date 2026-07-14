@@ -78,9 +78,9 @@ export const deleteProject = (id: string) =>
   req<{ ok: boolean }>("DELETE", `/projects/${id}`);
 
 // ── Service control ───────────────────────────────────────────────────────────
-export const startService = (id: string, type: "frontend" | "backend") =>
+export const startService = (id: string, type: "frontend" | "backend", force = false) =>
   req<{ ok: boolean; status: ServiceStatus }>(
-    "POST", `/projects/${id}/services/${type}/start`
+    "POST", `/projects/${id}/services/${type}/start`, { force }
   );
 
 export const stopService = (id: string, type: "frontend" | "backend") =>
@@ -98,10 +98,18 @@ export const setupProject = (id: string) =>
     "POST", `/projects/${id}/setup`
   );
 
-export const startAllServices = (id: string) =>
+export const startAllServices = (id: string, force = false) =>
   req<{ ok: boolean; status: ServiceStatus }>(
-    "POST", `/projects/${id}/services/start-all`
+    "POST", `/projects/${id}/services/start-all`, { force }
   );
+
+export const checkPort = (id: string, type: "frontend" | "backend", port: number) =>
+  req<{ port: number; inUse: boolean }>(
+    "GET", `/projects/${id}/services/${type}/port-check?port=${port}`
+  );
+
+export const updateServicePort = (id: string, type: "frontend" | "backend", port: number) =>
+  req<BackendProject>("PATCH", `/projects/${id}/services/${type}/port`, { port });
 
 export const fetchStatus = (id: string) =>
   req<ServiceStatus>("GET", `/projects/${id}/status`);

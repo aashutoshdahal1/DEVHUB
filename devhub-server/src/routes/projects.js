@@ -149,8 +149,15 @@ router.post("/:id/services/:type/start", async (req, res) => {
     const project = await resolveProject(id);
     if (!project) return res.status(404).json({ error: "Project not found" });
 
-    const result = pm.startService(project, type);
-    if (!result.ok) return res.status(409).json({ error: result.reason });
+    const force = req.body?.force === true;
+    const result = await pm.startService(project, type, { force });
+    if (!result.ok) {
+      if (result.reason?.startsWith("PORT_IN_USE:")) {
+        const port = parseInt(result.reason.split(":")[1], 10);
+        return res.status(409).json({ error: "PORT_IN_USE", port });
+      }
+      return res.status(409).json({ error: result.reason });
+    }
     res.json({ ok: true, status: pm.getStatus(id) });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -191,9 +198,54 @@ router.post("/:id/services/start-all", async (req, res) => {
     const project = await resolveProject(req.params.id);
     if (!project) return res.status(404).json({ error: "Project not found" });
 
-    const result = await pm.startAllServices(project);
-    if (!result.ok) return res.status(409).json({ error: result.reason });
+    const force = req.body?.force === true;
+    const result = await pm.startAllServices(project, { force });
+    if (!result.ok) {
+      if (result.reason?.startsWith("PORT_IN_USE:")) {
+        const port = parseInt(result.reason.split(":")[1], 10);
+        return res.status(409).json({ error: "PORT_IN_USE", port });
+      }
+      return res.status(409).json({ error: result.reason });
+    }
     res.json({ ok: true, status: pm.getStatus(req.params.id) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/projects/:id/services/:type/port-check?port=N
+router.get("/:id/services/:type/port-check", async (req, res) => {
+  try {
+    const port = parseInt(req.query.port, 10);
+    if (!port || port < 1 || port > 65535) {
+      return res.status(400).json({ error: "Invalid port" });
+    }
+    const inUse = await pm.isPortListening(port);
+    res.json({ port, inUse });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PATCH /api/projects/:id/services/:type/port — update configured port
+router.patch("/:id/services/:type/port", async (req, res) => {
+  try {
+    const { id, type } = req.params;
+    if (!["frontend", "backend"].includes(type)) {
+      return res.status(400).json({ error: "type must be frontend or backend" });
+    }
+    const port = parseInt(req.body?.port, 10);
+    if (!port || port < 1 || port > 65535) {
+      return res.status(400).json({ error: "Invalid port" });
+    }
+    const projects = await readProjects();
+    const idx = projects.findIndex((p) => p.id === id);
+    if (idx === -1) return res.status(404).json({ error: "Project not found" });
+    if (!projects[idx][type]) return res.status(400).json({ error: `No ${type} config` });
+
+    projects[idx][type] = { ...projects[idx][type], port };
+    await writeProjects(projects);
+    res.json(withStatus(projects[idx]));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

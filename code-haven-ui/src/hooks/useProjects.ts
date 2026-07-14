@@ -56,8 +56,8 @@ export function useProjectMutations() {
   });
 
   const startService = useMutation({
-    mutationFn: ({ id, type }: { id: string; type: "frontend" | "backend" }) =>
-      api.startService(id, type),
+    mutationFn: ({ id, type, force }: { id: string; type: "frontend" | "backend"; force?: boolean }) =>
+      api.startService(id, type, force),
     onSuccess: invalidate,
   });
 
@@ -79,14 +79,20 @@ export function useProjectMutations() {
   });
 
   const startAllServices = useMutation({
-    mutationFn: (id: string) => api.startAllServices(id),
+    mutationFn: ({ id, force }: { id: string; force?: boolean }) => api.startAllServices(id, force),
+    onSuccess: invalidate,
+  });
+
+  const updateServicePort = useMutation({
+    mutationFn: ({ id, type, port }: { id: string; type: "frontend" | "backend"; port: number }) =>
+      api.updateServicePort(id, type, port),
     onSuccess: invalidate,
   });
 
   return {
     addProject, updateProject, deleteProject,
     startService, stopService, restartService,
-    setupProject, startAllServices,
+    setupProject, startAllServices, updateServicePort,
   };
 }
 
