@@ -120,6 +120,20 @@ function freePort(port) {
   } catch { /* nothing on that port */ }
 }
 
+function resolveCmd(cmd, cwd) {
+  const fs = require("fs");
+  const venvBin = path.join(cwd, "venv", "bin");
+  const hasVenv = fs.existsSync(venvBin);
+  if (!hasVenv) return cmd;
+  // Already wrapped with venv activation — don't double-wrap
+  if (/source\s+venv\/bin\/activate/.test(cmd)) return cmd;
+  // Bare python/uvicorn/gunicorn commands should use the venv
+  if (/^(uvicorn|gunicorn|python3?|flask|django-admin)\b/.test(cmd.trim())) {
+    return `bash -c "source venv/bin/activate && ${cmd}"`;
+  }
+  return cmd;
+}
+
 function spawnServiceProcess(project, serviceType) {
   const bag = getProcessBag(project.id);
   const svcConfig = project[serviceType];
@@ -131,10 +145,11 @@ function spawnServiceProcess(project, serviceType) {
     return null;
   }
 
+  const cmd = resolveCmd(svcConfig.cmd, cwd);
   if (svcConfig.port) freePort(svcConfig.port);
-  pushLog(project.id, serviceType, "info", `▶ Starting: ${svcConfig.cmd} (cwd: ${cwd})`);
+  pushLog(project.id, serviceType, "info", `▶ Starting: ${cmd} (cwd: ${cwd})`);
 
-  const child = spawn(svcConfig.cmd, {
+  const child = spawn(cmd, {
     cwd,
     env: buildEnv(project, serviceType),
     shell: true,
